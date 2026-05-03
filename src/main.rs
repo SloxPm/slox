@@ -8,7 +8,7 @@ fn main() -> ExitCode {
     match slox::run(args.command) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            plox::report_error(&error);
+            slox::report_error(&error);
             ExitCode::FAILURE
         }
     }
