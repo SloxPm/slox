@@ -2,6 +2,8 @@
 name = "slox"
 version = "0.1.0"
 edition = "2024"
+license = "LGPL-3.0-only"
+description = "Package Manager written in rust"
 
 [dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
