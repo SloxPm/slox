@@ -1,0 +1,10 @@
+[package]
+name = "slox"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.6.1", features = ["derive"] }
+git2 = "0.20.4"
+home = "0.5.12"
+toml = "1.1.2"
