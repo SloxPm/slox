@@ -1,6 +1,6 @@
 [package]
 name = "slox-core"
-version = "0.3.0"
+version = "0.4.0"
 edition.workspace = true
 license.workspace = true
 description.workspace = true
@@ -8,5 +8,5 @@ description.workspace = true
 [dependencies]
 git2.workspace = true
 home.workspace = true
-slox-cli = { version = "0.3.0", path = "../slox-cli" }
-slox-shim = { version = "0.3.0", path = "../slox-shim" }
+slox-cli = { version = "0.4.0", path = "../slox-cli" }
+slox-shim = { version = "0.4.0", path = "../slox-shim" }

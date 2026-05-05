@@ -6,6 +6,12 @@ use std::sync::{
 use std::thread;
 use std::time::{Duration, Instant};
 
+const RESET: &str = "\x1b[0m";
+const DIM: &str = "\x1b[2m";
+const CYAN: &str = "\x1b[36m";
+const MAGENTA: &str = "\x1b[35m";
+const RED: &str = "\x1b[31m";
+
 pub(crate) struct Report {
     summary: String,
     details: Vec<String>,
@@ -41,7 +47,9 @@ impl Progress {
             let mut index = 0usize;
 
             while !thread_stop.load(Ordering::Relaxed) {
-                eprint!("\r{} {}", frames[index % frames.len()], message);
+                let frame = frames[index % frames.len()];
+                let color = if index % 2 == 0 { CYAN } else { MAGENTA };
+                eprint!("\r{color}{frame}{RESET} {message}");
                 let _ = io::stderr().flush();
                 index += 1;
                 thread::sleep(Duration::from_millis(120));
@@ -59,9 +67,12 @@ impl Progress {
         self.stop();
         let elapsed = format_duration(self.started_at.elapsed());
 
-        eprintln!("{} in {}", report.summary, elapsed);
+        eprintln!(
+            "{CYAN}slox{RESET} {} {DIM}in {elapsed}{RESET}",
+            report.summary
+        );
         for detail in report.details {
-            eprintln!("- {}", detail);
+            eprintln!("{DIM}- {detail}{RESET}");
         }
     }
 
@@ -89,5 +100,5 @@ fn format_duration(duration: Duration) -> String {
 }
 
 pub fn report_error(error: &str) {
-    eprintln!("error {}", error);
+    eprintln!("{RED}error{RESET} {error}");
 }
