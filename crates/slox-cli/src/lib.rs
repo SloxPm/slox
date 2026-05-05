@@ -35,7 +35,7 @@ pub enum EnvCommand {
     Add { path: String },
     Remove { path: String },
     Set { path: String },
-    List { path: String },
+    Fetch { path: String },
 }
 
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]

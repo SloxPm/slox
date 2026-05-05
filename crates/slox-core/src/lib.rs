@@ -99,7 +99,7 @@ fn handle_env(store: &StorePaths, cmd: EnvCommand) -> Result<Report, String> {
                 .detail(format!("bin: {}", active_bin.display()))
                 .detail(format!("shims: {}", store.shim_bin_dir().display())))
         }
-        EnvCommand::List { path } => {
+        EnvCommand::Fetch { path } => {
             let active_bin = env::get_env(store, &path)?;
             
 
@@ -123,7 +123,7 @@ fn handle_env(store: &StorePaths, cmd: EnvCommand) -> Result<Report, String> {
                 .join(", ");
 
 
-            Ok(Report::new(format!("list"))
+            Ok(Report::new(format!("fetch"))
                 .detail(format!("bins: {}", bin_files))
                 .detail(format!("shims: {}", shim_files)))
         }
