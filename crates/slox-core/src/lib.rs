@@ -112,7 +112,10 @@ mod tests {
     use super::{
         activate::activation_script,
         env::{active_bin_dir, active_env_name, add_env, remove_env, set_env},
-        package::{Pkg, install_built_binary, parse_pkg, remove as remove_pkg, run_build_script},
+        package::{
+            BuildConfig, Pkg, install_built_binary, parse_pkg, remove as remove_pkg,
+            run_build_script,
+        },
         store::StorePaths,
     };
     use crate::activate;
@@ -311,9 +314,14 @@ mod tests {
         )
         .expect("failed to write build script");
 
-        run_build_script(&repo_dir).expect("build script should succeed");
-        let installed_binary = install_built_binary(&repo_dir, repo_name, &root_bin_dir)
-            .expect("install should succeed");
+        let build_config = BuildConfig {
+            script: PathBuf::from("build"),
+            binary: PathBuf::from("bin").join(repo_name),
+        };
+        run_build_script(&repo_dir, &build_config).expect("build script should succeed");
+        let installed_binary =
+            install_built_binary(&repo_dir, &build_config.binary, repo_name, &root_bin_dir)
+                .expect("install should succeed");
 
         assert!(installed_binary.is_file());
         let contents =
@@ -341,10 +349,15 @@ mod tests {
         )
         .expect("failed to write build script");
 
-        run_build_script(&repo_dir).expect("build script should succeed");
+        let build_config = BuildConfig {
+            script: PathBuf::from("build"),
+            binary: PathBuf::from("bin").join(repo_name),
+        };
+        run_build_script(&repo_dir, &build_config).expect("build script should succeed");
         let install_dir = active_bin_dir(&store).expect("active bin dir should resolve");
-        let installed_binary = install_built_binary(&repo_dir, repo_name, &install_dir)
-            .expect("install should succeed");
+        let installed_binary =
+            install_built_binary(&repo_dir, &build_config.binary, repo_name, &install_dir)
+                .expect("install should succeed");
 
         assert_eq!(
             installed_binary,
@@ -421,5 +434,38 @@ mod tests {
         assert!(!store.shim_bin_dir().join("demo").exists());
 
         fs::remove_dir_all(store.base).expect("failed to clean store dir");
+    }
+
+    #[test]
+    fn build_toml_can_override_script_and_binary_location() {
+        let repo_dir = make_temp_dir("repo");
+        let root_bin_dir = make_temp_dir("root-bin");
+
+        fs::create_dir_all(repo_dir.join("scripts")).expect("scripts dir should exist");
+        fs::write(
+            repo_dir.join("scripts").join("custom-build.sh"),
+            "#!/bin/sh\nmkdir -p dist\nprintf '#!/bin/sh\\necho custom\\n' > dist/custom-bin\nchmod +x dist/custom-bin\n",
+        )
+        .expect("build script should be written");
+        fs::write(
+            repo_dir.join("build.toml"),
+            "script = \"scripts/custom-build.sh\"\nbinary = \"dist/custom-bin\"\n",
+        )
+        .expect("build config should be written");
+
+        let build_config =
+            super::package::load_build_config(&repo_dir, "demo").expect("config should load");
+        run_build_script(&repo_dir, &build_config).expect("custom build should succeed");
+        let installed_binary =
+            install_built_binary(&repo_dir, &build_config.binary, "demo", &root_bin_dir)
+                .expect("custom binary should install");
+
+        assert_eq!(installed_binary, root_bin_dir.join("demo"));
+        let contents =
+            fs::read_to_string(installed_binary).expect("failed to read installed binary");
+        assert!(contents.contains("custom"));
+
+        fs::remove_dir_all(repo_dir).expect("failed to clean repo dir");
+        fs::remove_dir_all(root_bin_dir).expect("failed to clean root bin dir");
     }
 }

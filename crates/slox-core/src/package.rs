@@ -4,6 +4,7 @@ use git2::Repository;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use toml::{Table, Value};
 
 #[derive(Debug)]
 pub(crate) enum Pkg {
@@ -22,6 +23,11 @@ pub(crate) struct PackageRemove {
     pub(crate) removed_binary: PathBuf,
     pub(crate) shim_binary: PathBuf,
     pub(crate) removed: bool,
+}
+
+pub(crate) struct BuildConfig {
+    pub(crate) script: PathBuf,
+    pub(crate) binary: PathBuf,
 }
 
 pub(crate) fn parse_pkg(path: &str) -> Result<Pkg, String> {
@@ -51,8 +57,54 @@ pub(crate) fn parse_pkg(path: &str) -> Result<Pkg, String> {
     }
 }
 
-pub(crate) fn run_build_script(repo_dir: &Path) -> Result<(), String> {
-    let build_script = repo_dir.join("build");
+pub(crate) fn load_build_config(
+    repo_dir: &Path,
+    package_name: &str,
+) -> Result<BuildConfig, String> {
+    let config_path = repo_dir.join("build.toml");
+    if !config_path.is_file() {
+        return Ok(BuildConfig {
+            script: PathBuf::from("build"),
+            binary: PathBuf::from("bin").join(package_name),
+        });
+    }
+
+    let contents = fs::read_to_string(&config_path).map_err(|error| {
+        format!(
+            "failed to read build config `{}`: {error}",
+            config_path.display()
+        )
+    })?;
+    let value = contents.parse::<Table>().map_err(|error| {
+        format!(
+            "failed to parse build config `{}`: {error}",
+            config_path.display()
+        )
+    })?;
+
+    let script = value
+        .get("script")
+        .map(value_to_path)
+        .transpose()?
+        .unwrap_or_else(|| PathBuf::from("build"));
+    let binary = value
+        .get("binary")
+        .map(value_to_path)
+        .transpose()?
+        .unwrap_or_else(|| PathBuf::from("bin").join(package_name));
+
+    Ok(BuildConfig { script, binary })
+}
+
+fn value_to_path(value: &Value) -> Result<PathBuf, String> {
+    value
+        .as_str()
+        .map(PathBuf::from)
+        .ok_or_else(|| "expected a string path".to_string())
+}
+
+pub(crate) fn run_build_script(repo_dir: &Path, config: &BuildConfig) -> Result<(), String> {
+    let build_script = repo_dir.join(&config.script);
     if !build_script.is_file() {
         return Err(format!(
             "expected build script at `{}`",
@@ -61,7 +113,7 @@ pub(crate) fn run_build_script(repo_dir: &Path) -> Result<(), String> {
     }
 
     let output = Command::new("bash")
-        .arg("build")
+        .arg(&config.script)
         .current_dir(repo_dir)
         .output()
         .map_err(|error| {
@@ -89,11 +141,12 @@ pub(crate) fn run_build_script(repo_dir: &Path) -> Result<(), String> {
 }
 
 pub(crate) fn install_built_binary(
-    repo_dir: &Path,
+    package_dir: &Path,
+    built_binary_relpath: &Path,
     repo: &str,
     root_bin_dir: &Path,
 ) -> Result<PathBuf, String> {
-    let built_binary = repo_dir.join("bin").join(repo);
+    let built_binary = package_dir.join(built_binary_relpath);
     if !built_binary.is_file() {
         return Err(format!(
             "expected built binary at `{}`",
@@ -151,10 +204,17 @@ fn install_package_from_dir(
         ));
     }
 
-    run_build_script(package_dir)
+    let build_config = load_build_config(package_dir, package_name)
+        .map_err(|details| format!("build config failed for `{package_name}`: {details}"))?;
+    run_build_script(package_dir, &build_config)
         .map_err(|details| format!("build failed for `{package_name}`: {details}"))?;
     let install_dir = active_bin_dir(store)?;
-    let installed_binary = install_built_binary(package_dir, package_name, &install_dir)?;
+    let installed_binary = install_built_binary(
+        package_dir,
+        &build_config.binary,
+        package_name,
+        &install_dir,
+    )?;
     sync_active_shims(store)?;
     Ok(installed_binary)
 }
