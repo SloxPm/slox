@@ -504,7 +504,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "slox"
-version = "1.2.0"
+version = "1.3.0"
 dependencies = [
  "clap",
  "slox-cli",
@@ -513,14 +513,14 @@ dependencies = [
 
 [[package]]
 name = "slox-cli"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "clap",
 ]
 
 [[package]]
 name = "slox-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "git2",
  "home",
@@ -531,7 +531,7 @@ dependencies = [
 
 [[package]]
 name = "slox-shim"
-version = "0.5.0"
+version = "0.6.0"
 
 [[package]]
 name = "smallvec"

@@ -26,6 +26,7 @@ pub(crate) struct PackageRemove {
 }
 
 pub(crate) struct BuildConfig {
+    pub(crate) name: String,
     pub(crate) script: PathBuf,
     pub(crate) binary: PathBuf,
 }
@@ -64,6 +65,7 @@ pub(crate) fn load_build_config(
     let config_path = repo_dir.join("build.toml");
     if !config_path.is_file() {
         return Ok(BuildConfig {
+            name: package_name.to_string(),
             script: PathBuf::from("build"),
             binary: PathBuf::from("bin").join(package_name),
         });
@@ -82,6 +84,11 @@ pub(crate) fn load_build_config(
         )
     })?;
 
+    let name = value
+        .get("name")
+        .map(value_to_string)
+        .transpose()?
+        .unwrap_or_else(|| package_name.to_string());
     let script = value
         .get("script")
         .map(value_to_path)
@@ -93,7 +100,11 @@ pub(crate) fn load_build_config(
         .transpose()?
         .unwrap_or_else(|| PathBuf::from("bin").join(package_name));
 
-    Ok(BuildConfig { script, binary })
+    Ok(BuildConfig {
+        name,
+        script,
+        binary,
+    })
 }
 
 fn value_to_path(value: &Value) -> Result<PathBuf, String> {
@@ -101,6 +112,13 @@ fn value_to_path(value: &Value) -> Result<PathBuf, String> {
         .as_str()
         .map(PathBuf::from)
         .ok_or_else(|| "expected a string path".to_string())
+}
+
+fn value_to_string(value: &Value) -> Result<String, String> {
+    value
+        .as_str()
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| "expected a string".to_string())
 }
 
 pub(crate) fn run_build_script(repo_dir: &Path, config: &BuildConfig) -> Result<(), String> {
@@ -143,7 +161,7 @@ pub(crate) fn run_build_script(repo_dir: &Path, config: &BuildConfig) -> Result<
 pub(crate) fn install_built_binary(
     package_dir: &Path,
     built_binary_relpath: &Path,
-    repo: &str,
+    install_name: &str,
     root_bin_dir: &Path,
 ) -> Result<PathBuf, String> {
     let built_binary = package_dir.join(built_binary_relpath);
@@ -161,7 +179,7 @@ pub(crate) fn install_built_binary(
         )
     })?;
 
-    let installed_binary = root_bin_dir.join(repo);
+    let installed_binary = root_bin_dir.join(install_name);
     fs::copy(&built_binary, &installed_binary).map_err(|error| {
         format!(
             "failed to install `{}` to `{}`: {error}",
@@ -196,7 +214,7 @@ fn install_package_from_dir(
     store: &StorePaths,
     package_dir: &Path,
     package_name: &str,
-) -> Result<PathBuf, String> {
+) -> Result<PackageInstall, String> {
     if !package_dir.is_dir() {
         return Err(format!(
             "package directory `{}` does not exist",
@@ -212,33 +230,22 @@ fn install_package_from_dir(
     let installed_binary = install_built_binary(
         package_dir,
         &build_config.binary,
-        package_name,
+        &build_config.name,
         &install_dir,
     )?;
     sync_active_shims(store)?;
-    Ok(installed_binary)
-}
-
-fn package_name(pkg: &Pkg) -> &str {
-    match pkg {
-        Pkg::GitHub { repo, .. } => repo,
-        Pkg::Regit { pkg } => pkg,
-    }
-}
-
-fn package_name_from_remove_arg(path: &str) -> Result<String, String> {
-    if path.contains('@') {
-        return Ok(package_name(&parse_pkg(path)?).to_string());
-    }
-
-    Ok(path.to_string())
+    Ok(PackageInstall {
+        package_name: build_config.name.clone(),
+        shim_binary: store.shim_bin_dir().join(&build_config.name),
+        installed_binary,
+    })
 }
 
 fn install_package_from_repo(
     store: &StorePaths,
     url: &str,
     repo_name: &str,
-) -> Result<PathBuf, String> {
+) -> Result<PackageInstall, String> {
     let cache_root = store.cache_root();
     fs::create_dir_all(&cache_root).map_err(|error| {
         format!(
@@ -252,7 +259,7 @@ fn install_package_from_repo(
     install_package_from_dir(store, &repo_dir, repo_name)
 }
 
-fn install_sloxpkg_from_registry(store: &StorePaths, pkg: &str) -> Result<PathBuf, String> {
+fn install_sloxpkg_from_registry(store: &StorePaths, pkg: &str) -> Result<PackageInstall, String> {
     let cache_root = store.cache_root();
     fs::create_dir_all(&cache_root).map_err(|error| {
         format!(
@@ -286,26 +293,46 @@ pub(crate) fn download(store: &StorePaths, pkg: &Pkg) -> Result<PackageInstall, 
     match pkg {
         Pkg::GitHub { user, repo } => {
             let url = format!("https://github.com/{user}/{repo}");
-            let installed_binary = install_package_from_repo(store, &url, repo)?;
-            Ok(PackageInstall {
-                package_name: repo.clone(),
-                shim_binary: store.shim_bin_dir().join(repo),
-                installed_binary,
-            })
+            install_package_from_repo(store, &url, repo)
+        }
+        Pkg::Regit { pkg } => install_sloxpkg_from_registry(store, pkg),
+    }
+}
+
+fn package_name_from_remove_arg(store: &StorePaths, path: &str) -> Result<String, String> {
+    if !path.contains('@') {
+        return Ok(path.to_string());
+    }
+
+    let pkg = parse_pkg(path)?;
+    match &pkg {
+        Pkg::GitHub { user, repo } => {
+            let url = format!("https://github.com/{user}/{repo}");
+            let repo_dir = store.cache_root().join(repo);
+            let _repo = clone_or_open_repo(&url, &repo_dir)?;
+            Ok(load_build_config(&repo_dir, repo)?.name)
         }
         Pkg::Regit { pkg } => {
-            let installed_binary = install_sloxpkg_from_registry(store, pkg)?;
-            Ok(PackageInstall {
-                package_name: pkg.clone(),
-                shim_binary: store.shim_bin_dir().join(pkg),
-                installed_binary,
-            })
+            let registry_dir = store.cache_root().join("std-pkg");
+            let registry_url = "https://github.com/SloxPm/std-pkg";
+            let registry_repo = clone_or_open_repo(registry_url, &registry_dir)?;
+
+            if let Ok(mut submodule) = registry_repo.find_submodule(pkg) {
+                let submodule_url = submodule.url().unwrap_or("unknown url").to_string();
+                submodule.update(true, None).map_err(|error| {
+                    format!(
+                        "failed to initialize sloxpkgs package `{pkg}` from `{submodule_url}`: {error}"
+                    )
+                })?;
+            }
+
+            Ok(load_build_config(&registry_dir.join(pkg), pkg)?.name)
         }
     }
 }
 
 pub(crate) fn remove(store: &StorePaths, path: &str) -> Result<PackageRemove, String> {
-    let package_name = package_name_from_remove_arg(path)?;
+    let package_name = package_name_from_remove_arg(store, path)?;
     let installed_binary = active_bin_dir(store)?.join(&package_name);
     let shim_binary = store.shim_bin_dir().join(&package_name);
 

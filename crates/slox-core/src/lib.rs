@@ -315,6 +315,7 @@ mod tests {
         .expect("failed to write build script");
 
         let build_config = BuildConfig {
+            name: repo_name.to_string(),
             script: PathBuf::from("build"),
             binary: PathBuf::from("bin").join(repo_name),
         };
@@ -350,6 +351,7 @@ mod tests {
         .expect("failed to write build script");
 
         let build_config = BuildConfig {
+            name: repo_name.to_string(),
             script: PathBuf::from("build"),
             binary: PathBuf::from("bin").join(repo_name),
         };
@@ -464,6 +466,40 @@ mod tests {
         let contents =
             fs::read_to_string(installed_binary).expect("failed to read installed binary");
         assert!(contents.contains("custom"));
+
+        fs::remove_dir_all(repo_dir).expect("failed to clean repo dir");
+        fs::remove_dir_all(root_bin_dir).expect("failed to clean root bin dir");
+    }
+
+    #[test]
+    fn build_toml_can_override_installed_name() {
+        let repo_dir = make_temp_dir("repo");
+        let root_bin_dir = make_temp_dir("root-bin");
+
+        fs::write(
+            repo_dir.join("build"),
+            "#!/bin/sh\nmkdir -p bin\nprintf '#!/bin/sh\\necho renamed\\n' > bin/original\nchmod +x bin/original\n",
+        )
+        .expect("build script should be written");
+        fs::write(
+            repo_dir.join("build.toml"),
+            "name = \"renamed\"\nbinary = \"bin/original\"\n",
+        )
+        .expect("build config should be written");
+
+        let build_config =
+            super::package::load_build_config(&repo_dir, "demo").expect("config should load");
+        run_build_script(&repo_dir, &build_config).expect("custom build should succeed");
+        let installed_binary = install_built_binary(
+            &repo_dir,
+            &build_config.binary,
+            &build_config.name,
+            &root_bin_dir,
+        )
+        .expect("custom binary should install");
+
+        assert_eq!(build_config.name, "renamed");
+        assert_eq!(installed_binary, root_bin_dir.join("renamed"));
 
         fs::remove_dir_all(repo_dir).expect("failed to clean repo dir");
         fs::remove_dir_all(root_bin_dir).expect("failed to clean root bin dir");
