@@ -7,13 +7,13 @@ members = [
 resolver = "3"
 
 [workspace.package]
-version = "1.3.0"
-edition = "2024"
+version = "1.5.0"
+edition = "2021"
 license = "LGPL-3.0-only"
 description = "Package Manager written in rust"
 
 [workspace.dependencies]
-clap = { version = "4.6.1", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 git2 = "0.20.4"
 home = "0.5.12"
 toml = "1.1.2"
@@ -32,5 +32,5 @@ path = "crates/slox-bootstrap/src/main.rs"
 
 [dependencies]
 clap.workspace = true
-slox-cli = { version = "0.6.0", path = "crates/slox-cli" }
-slox-core = { version = "0.6.0", path = "crates/slox-core" }
+slox-cli = { version = "0.8.0", path = "crates/slox-cli" }
+slox-core = { version = "0.8.0", path = "crates/slox-core" }

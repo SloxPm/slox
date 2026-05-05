@@ -38,18 +38,17 @@ pub(crate) struct Progress {
 }
 
 impl Progress {
-    pub(crate) fn start(message: &str) -> Self {
+    pub(crate) fn start() -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let thread_stop = Arc::clone(&stop);
-        let message = message.to_string();
         let handle = thread::spawn(move || {
-            let frames = ['o', '0', 'O'];
+            let frames = ['—','\\' ,'|' ,'/' ,'—'];
             let mut index = 0usize;
 
             while !thread_stop.load(Ordering::Relaxed) {
                 let frame = frames[index % frames.len()];
                 let color = if index % 2 == 0 { CYAN } else { MAGENTA };
-                eprint!("\r{color}{frame}{RESET} {message}");
+                eprint!("\r{color}{frame}{RESET}");
                 let _ = io::stderr().flush();
                 index += 1;
                 thread::sleep(Duration::from_millis(120));

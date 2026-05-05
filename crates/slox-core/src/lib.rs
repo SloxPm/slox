@@ -7,6 +7,9 @@ mod term;
 use slox_cli::{Commands, EnvCommand, PkgCommand};
 use store::StorePaths;
 use term::{Progress, Report};
+use std::io;
+use std::fs;
+use std::path::PathBuf;
 
 pub fn report_error(error: &str) {
     term::report_error(error);
@@ -19,7 +22,7 @@ pub fn run(command: Commands) -> Result<(), String> {
 fn run_with_store(command: Commands, store: &StorePaths) -> Result<(), String> {
     match command {
         Commands::Env { command } => {
-            let progress = Progress::start("updating environment");
+            let progress = Progress::start();
             match handle_env(store, command) {
                 Ok(report) => {
                     progress.finish(report);
@@ -36,7 +39,7 @@ fn run_with_store(command: Commands, store: &StorePaths) -> Result<(), String> {
             Ok(())
         }
         Commands::Pkg { command } => {
-            let progress = Progress::start("processing package");
+            let progress = Progress::start();
             match handle_pkg(store, command) {
                 Ok(report) => {
                     progress.finish(report);
@@ -49,6 +52,22 @@ fn run_with_store(command: Commands, store: &StorePaths) -> Result<(), String> {
             }
         }
     }
+}
+
+
+fn get_files_in_dir(dir_path: &str) -> io::Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    
+    for entry in fs::read_dir(dir_path)? {
+        let entry = entry?;
+        let path = entry.path();
+        
+        if path.is_file() {
+            files.push(path);
+        }
+    }
+    
+    Ok(files)
 }
 
 fn handle_env(store: &StorePaths, cmd: EnvCommand) -> Result<Report, String> {
@@ -79,6 +98,34 @@ fn handle_env(store: &StorePaths, cmd: EnvCommand) -> Result<Report, String> {
             Ok(Report::new(format!("activated env `{path}`"))
                 .detail(format!("bin: {}", active_bin.display()))
                 .detail(format!("shims: {}", store.shim_bin_dir().display())))
+        }
+        EnvCommand::List { path } => {
+            let active_bin = env::get_env(store, &path)?;
+            
+
+            let bin_files_vec = get_files_in_dir(&active_bin.display().to_string())
+                .unwrap_or_else(|_| vec![]);
+                
+            let shim_files_vec = get_files_in_dir(&store.shim_bin_dir().display().to_string())
+                .unwrap_or_else(|_| vec![]);
+
+
+            let bin_files = bin_files_vec
+                .iter()
+                .map(|p| p.file_name().unwrap_or_default().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            let shim_files = shim_files_vec
+                .iter()
+                .map(|p| p.file_name().unwrap_or_default().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(", ");
+
+
+            Ok(Report::new(format!("list"))
+                .detail(format!("bins: {}", bin_files))
+                .detail(format!("shims: {}", shim_files)))
         }
     }
 }

@@ -4,6 +4,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
+
 pub(crate) struct RemoveEnvResult {
     pub(crate) env_dir: PathBuf,
     pub(crate) removed: bool,
@@ -64,6 +65,16 @@ pub(crate) fn set_env(store: &StorePaths, path: &str) -> Result<PathBuf, String>
     sync_active_shims(store)?;
 
     Ok(store.env_bin_dir(path))
+}
+
+pub(crate) fn get_env(store:&StorePaths, path:&str) -> Result<PathBuf, String> {
+    let env_dir = store.env_dir(path);
+    if !env_dir.is_dir() {
+        return Err(format!(
+            "environment `{path}` does not exist. Run `slox env add {path}` first."
+        ));
+    }
+    Ok(store.env_bin_dir(path))    
 }
 
 fn clear_active_env(store: &StorePaths) -> Result<(), String> {
